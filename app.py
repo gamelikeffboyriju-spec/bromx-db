@@ -1,237 +1,137 @@
 from flask import Flask, request, jsonify
+import requests
 import json
 import os
-import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = Flask(__name__)
 
 # ============================================
-# RENDER DISK PATH (PERSISTENT - Kabhi delete nahi hoga)
+# BOT CONFIG
 # ============================================
-DATA_DIR = "/opt/render/project/src/data"
-DATA_FILE = os.path.join(DATA_DIR, "database.json")
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '8981073322:AAHmyVlyLjlab1_hOZBllWSKHsJPWMM7smE')
+CHAT_ID = os.environ.get('CHAT_ID', '8721224557')
 
-# Auto-create directory
-os.makedirs(DATA_DIR, exist_ok=True)
+def send_tg(text):
+    """Telegram pe message bhejo"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    resp = requests.post(url, json={"chat_id": CHAT_ID, "text": text[:4000]})
+    return resp.json()
 
-# ============================================
-# DATABASE FUNCTIONS
-# ============================================
-def load_db():
-    """Load database from file"""
-    try:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, 'r') as f:
-                return json.load(f)
-    except:
-        pass
-    return {}
-
-def save_db(data):
-    """Save database to file"""
-    try:
-        with open(DATA_FILE, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
-        return True
-    except Exception as e:
-        print(f"Save Error: {e}")
-        return False
+def get_tg_messages():
+    """Telegram se sab messages lo"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    resp = requests.get(url)
+    return resp.json()
 
 # ============================================
-# PUBLIC API - Store Any Data
+# STORAGE API - KISI BHI PROJECT SE CALL KARO
 # ============================================
+
 @app.route('/store', methods=['POST'])
-def store_data():
-    """Koi bhi JSON data store karo"""
-    try:
-        data = request.get_json()
-        
-        # Generate unique ID
-        record_id = data.get('id') or str(uuid.uuid4())[:8]
-        
-        db = load_db()
-        db[record_id] = {
-            "data": data,
-            "created": datetime.now().isoformat(),
-            "updated": datetime.now().isoformat()
-        }
-        
-        save_db(db)
-        
+def store():
+    """Koi bhi data store karo"""
+    data = request.get_json()
+    
+    # Format for Telegram
+    text = f"📦 BRONX_STORE\n🆔 {data.get('id', 'auto')}\n📝 {json.dumps(data, ensure_ascii=False)[:3500]}"
+    
+    result = send_tg(text)
+    
+    if result.get('ok'):
         return jsonify({
             "status": "✅ Stored",
-            "id": record_id,
-            "total_records": len(db)
+            "message_id": result['result']['message_id'],
+            "storage": "Telegram Cloud - PERMANENT"
         })
-    except Exception as e:
-        return jsonify({"status": "❌", "error": str(e)}), 400
+    
+    return jsonify({"status": "❌", "error": result}), 500
 
-@app.route('/get/<record_id>', methods=['GET'])
-def get_data(record_id):
+@app.route('/store/keys', methods=['POST'])
+def store_keys():
+    """API Keys store karo"""
+    data = request.get_json()
+    
+    text = f"""🔑 KEY_STORE
+━━━━━━━━━━━━━━━
+Key: {data.get('key','')}
+Owner: {data.get('owner','')}
+Limit: {data.get('limit','')}
+Scopes: {data.get('scopes',[])}
+Expiry: {data.get('expiry','')}
+Time: {datetime.now().isoformat()}
+━━━━━━━━━━━━━━━"""
+    
+    send_tg(text)
+    return jsonify({"status": "✅ Key Stored Permanently"})
+
+@app.route('/store/log', methods=['POST'])
+def store_log():
+    """Activity logs store karo"""
+    data = request.get_json()
+    text = f"📋 LOG | {data.get('action','')} | {data.get('user','')} | {datetime.now().isoformat()}"
+    send_tg(text)
+    return jsonify({"status": "✅ Logged"})
+
+@app.route('/get', methods=['GET'])
+def get_data():
     """Stored data retrieve karo"""
-    db = load_db()
+    updates = get_tg_messages()
     
-    if record_id in db:
-        return jsonify({
-            "status": "✅ Found",
-            "data": db[record_id]
-        })
-    
-    return jsonify({"status": "❌ Not Found"}), 404
-
-@app.route('/get/all', methods=['GET'])
-def get_all():
-    """Sab data ek saath"""
-    db = load_db()
-    return jsonify({
-        "status": "✅",
-        "total": len(db),
-        "records": db
-    })
-
-@app.route('/update/<record_id>', methods=['PUT'])
-def update_data(record_id):
-    """Existing data update karo"""
-    try:
-        new_data = request.get_json()
-        db = load_db()
-        
-        if record_id in db:
-            db[record_id]['data'].update(new_data)
-            db[record_id]['updated'] = datetime.now().isoformat()
-            save_db(db)
-            return jsonify({"status": "✅ Updated"})
-        
-        return jsonify({"status": "❌ Not Found"}), 404
-    except Exception as e:
-        return jsonify({"status": "❌", "error": str(e)}), 400
-
-@app.route('/delete/<record_id>', methods=['DELETE'])
-def delete_data(record_id):
-    """Record delete karo"""
-    db = load_db()
-    
-    if record_id in db:
-        del db[record_id]
-        save_db(db)
-        return jsonify({"status": "✅ Deleted", "remaining": len(db)})
-    
-    return jsonify({"status": "❌ Not Found"}), 404
-
-# ============================================
-# KEY MANAGEMENT SPECIFIC API
-# ============================================
-@app.route('/keys/generate', methods=['POST'])
-def generate_key():
-    """API Key generate karo"""
-    try:
-        body = request.get_json() or {}
-        
-        new_key = "BRONX_" + uuid.uuid4().hex[:16].upper()
-        
-        key_data = {
-            "key": new_key,
-            "owner": body.get('owner', 'User'),
-            "limit": body.get('limit', 100),
-            "used": 0,
-            "scopes": body.get('scopes', ['all']),
-            "status": "active",
-            "expiry": (datetime.now() + timedelta(days=body.get('days', 30))).isoformat(),
-            "created": datetime.now().isoformat()
-        }
-        
-        db = load_db()
-        
-        # Keys section me store
-        if 'api_keys' not in db:
-            db['api_keys'] = {}
-        
-        db['api_keys'][new_key] = key_data
-        save_db(db)
+    if updates.get('ok'):
+        messages = []
+        for msg in updates['result']:
+            if 'message' in msg and 'text' in msg['message']:
+                if 'BRONX_STORE' in msg['message']['text']:
+                    messages.append({
+                        "id": msg['message']['message_id'],
+                        "text": msg['message']['text'],
+                        "date": msg['message']['date']
+                    })
         
         return jsonify({
-            "status": "✅ Key Generated",
-            "key": new_key,
-            "details": key_data
+            "status": "✅",
+            "total": len(messages),
+            "data": messages[-50:]  # Last 50 records
         })
-    except Exception as e:
-        return jsonify({"status": "❌", "error": str(e)}), 400
+    
+    return jsonify({"status": "❌", "error": "Cannot fetch"}), 500
 
-@app.route('/keys/verify', methods=['GET'])
-def verify_key():
-    """Key verify karo"""
-    api_key = request.args.get('key', '')
+@app.route('/setup', methods=['GET'])
+def setup():
+    """Auto-detect Chat ID"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    resp = requests.get(url)
+    data = resp.json()
     
-    db = load_db()
-    keys = db.get('api_keys', {})
-    
-    if api_key not in keys:
-        return jsonify({"valid": False, "error": "Invalid key"}), 403
-    
-    key_data = keys[api_key]
-    
-    # Check expiry
-    if key_data.get('expiry'):
-        if datetime.now() > datetime.fromisoformat(key_data['expiry']):
-            return jsonify({"valid": False, "error": "Expired"}), 403
-    
-    # Check limit
-    if key_data['used'] >= key_data['limit']:
-        return jsonify({"valid": False, "error": "Limit exhausted"}), 403
-    
-    # Increment
-    key_data['used'] += 1
-    save_db(db)
+    if data.get('ok') and data['result']:
+        chat_id = data['result'][-1]['message']['chat']['id']
+        return jsonify({
+            "status": "✅",
+            "chat_id": chat_id,
+            "set_env": f"CHAT_ID={chat_id}"
+        })
     
     return jsonify({
-        "valid": True,
-        "owner": key_data['owner'],
-        "remaining": key_data['limit'] - key_data['used']
-    })
-
-@app.route('/keys/all', methods=['GET'])
-def all_keys():
-    """Sab keys list"""
-    db = load_db()
-    return jsonify({
-        "status": "✅",
-        "total_keys": len(db.get('api_keys', {})),
-        "keys": db.get('api_keys', {})
-    })
-
-# ============================================
-# DATABASE STATS
-# ============================================
-@app.route('/stats', methods=['GET'])
-def db_stats():
-    db = load_db()
-    
-    # File size
-    file_size = os.path.getsize(DATA_FILE) if os.path.exists(DATA_FILE) else 0
-    
-    return jsonify({
-        "status": "✅",
-        "file_path": DATA_FILE,
-        "file_size_kb": round(file_size / 1024, 2),
-        "total_records": len(db),
-        "sections": list(db.keys()),
-        "credit": "@BRONX_ULTRA"
+        "status": "❌",
+        "help": "Bot ko /start bhejo pehle!"
     })
 
 @app.route('/')
 def home():
     return jsonify({
-        "service": "BRONX ULTRA DATA STORAGE API",
+        "service": "🗄️ BRONX EXTERNAL STORAGE API",
+        "storage": "Telegram Cloud (Permanent & Free)",
         "endpoints": {
-            "store": "POST /store",
-            "get": "GET /get/<id>",
-            "get_all": "GET /get/all",
-            "update": "PUT /update/<id>",
-            "delete": "DELETE /delete/<id>",
-            "generate_key": "POST /keys/generate",
-            "verify_key": "GET /keys/verify?key=KEY",
-            "stats": "GET /stats"
+            "store_data": "POST /store",
+            "store_keys": "POST /store/keys",
+            "store_logs": "POST /store/log",
+            "get_data": "GET /get",
+            "auto_setup": "GET /setup"
+        },
+        "how_to_use": {
+            "from_python": "requests.post('URL/store', json={'key':'value'})",
+            "from_js": "fetch('URL/store', {method:'POST', body:JSON.stringify({key:'value'})})"
         },
         "credit": "@BRONX_ULTRA"
     })
