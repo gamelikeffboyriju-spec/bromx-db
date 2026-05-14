@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 import json
 import os
 import uuid
@@ -7,300 +7,235 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 
 # ============================================
-# STORAGE FILE (Render Persistent)
+# RENDER DISK PATH (PERSISTENT - Kabhi delete nahi hoga)
 # ============================================
-STORAGE_FILE = "/opt/render/project/src/data_storage.json"
-ADMIN_PASSWORD = "bronx2026"
+DATA_DIR = "/opt/render/project/src/data"
+DATA_FILE = os.path.join(DATA_DIR, "database.json")
+
+# Auto-create directory
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # ============================================
-# LOAD / SAVE FUNCTIONS
+# DATABASE FUNCTIONS
 # ============================================
-def load_data():
+def load_db():
+    """Load database from file"""
     try:
-        if os.path.exists(STORAGE_FILE):
-            with open(STORAGE_FILE, 'r') as f:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r') as f:
                 return json.load(f)
     except:
         pass
-    return {"keys": {}, "settings": {}, "logs": []}
+    return {}
 
-def save_data(data):
+def save_db(data):
+    """Save database to file"""
     try:
-        os.makedirs(os.path.dirname(STORAGE_FILE), exist_ok=True)
-        with open(STORAGE_FILE, 'w') as f:
+        with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=2, default=str)
         return True
     except Exception as e:
-        print(f"Save error: {e}")
+        print(f"Save Error: {e}")
         return False
 
 # ============================================
-# ADMIN PANEL HTML
+# PUBLIC API - Store Any Data
 # ============================================
-ADMIN_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>BRONX ADMIN</title>
-    <meta charset="UTF-8">
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{background:#000;color:#bf00ff;font-family:monospace;padding:20px}
-        .header{text-align:center;padding:30px;border:2px solid #bf00ff;border-radius:15px;margin-bottom:20px}
-        h1{color:#bf00ff;text-shadow:0 0 20px #bf00ff}
-        .panel{background:#111;border:1px solid #bf00ff;border-radius:10px;padding:20px;margin:15px 0}
-        input,select{width:100%;padding:12px;background:#000;border:1px solid #bf00ff;border-radius:8px;color:#bf00ff;margin:8px 0;font-family:monospace}
-        .btn{padding:12px 25px;background:#bf00ff;color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:bold;margin:5px}
-        .btn:hover{box-shadow:0 0 20px #bf00ff}
-        table{width:100%;border-collapse:collapse;margin-top:15px}
-        th{background:#bf00ff;color:#000;padding:10px}
-        td{padding:8px;border-bottom:1px solid #333;color:#fff}
-        .badge{padding:4px 10px;border-radius:20px;font-size:11px}
-        .active{background:#0f02;color:#0f0}
-        .expired{background:#f002;color:#f00}
-        .toast{position:fixed;bottom:20px;right:20px;background:#bf00ff;color:#000;padding:15px 25px;border-radius:10px;font-weight:bold;z-index:999}
-        .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px}
-        .stat{background:#111;border:1px solid #bf00ff;padding:15px;text-align:center;border-radius:10px}
-        .stat-val{font-size:28px;color:#bf00ff;font-weight:bold}
-        .stat-label{color:#888;font-size:12px}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>👑 BRONX ULTRA KEY MANAGER</h1>
-        <p style="color:#888;">Data Storage API | Admin Panel</p>
-    </div>
-    
-    <div class="stats">
-        <div class="stat"><div class="stat-val" id="totalKeys">0</div><div class="stat-label">TOTAL KEYS</div></div>
-        <div class="stat"><div class="stat-val" id="activeKeys">0</div><div class="stat-label">ACTIVE KEYS</div></div>
-        <div class="stat"><div class="stat-val" id="totalUsed">0</div><div class="stat-label">TOTAL USED</div></div>
-        <div class="stat"><div class="stat-val" id="apisCount">0</div><div class="stat-label">SCOPES</div></div>
-    </div>
-    
-    <div class="panel">
-        <h2 style="color:#bf00ff;">🔑 GENERATE NEW KEY</h2>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px">
-            <div>
-                <label style="color:#888;">OWNER NAME</label>
-                <input type="text" id="ownerName" value="Premium User">
-            </div>
-            <div>
-                <label style="color:#888;">REQUEST LIMIT</label>
-                <input type="number" id="limit" value="100">
-            </div>
-            <div>
-                <label style="color:#888;">EXPIRY (Days)</label>
-                <input type="number" id="expiryDays" value="30">
-            </div>
-            <div>
-                <label style="color:#888;">SCOPES</label>
-                <select id="scopes" multiple style="height:80px">
-                    <option value="number">Number Lookup</option>
-                    <option value="aadhar">Aadhar Lookup</option>
-                    <option value="vehicle">Vehicle Info</option>
-                    <option value="tg">Telegram Info</option>
-                    <option value="all">ALL SCOPES</option>
-                </select>
-            </div>
-        </div>
-        <button class="btn" onclick="generateKey()" style="width:100%;margin-top:15px">🚀 GENERATE API KEY</button>
-    </div>
-    
-    <div class="panel">
-        <h2 style="color:#bf00ff;">📋 ALL KEYS</h2>
-        <div style="max-height:400px;overflow-y:auto">
-            <table>
-                <thead>
-                    <tr><th>KEY</th><th>OWNER</th><th>LIMIT</th><th>USED</th><th>EXPIRY</th><th>SCOPES</th><th>STATUS</th><th>ACTION</th></tr>
-                </thead>
-                <tbody id="keysTable"></tbody>
-            </table>
-        </div>
-    </div>
-    
-    <div id="toast" class="toast" style="display:none"></div>
-    
-    <script>
-        const SCOPES_LIST = ['number','aadhar','vehicle','tg','pan','upi','ifsc','pincode','ip','all'];
+@app.route('/store', methods=['POST'])
+def store_data():
+    """Koi bhi JSON data store karo"""
+    try:
+        data = request.get_json()
         
-        async function loadData(){
-            const res = await fetch('/admin/keys');
-            const data = await res.json();
-            
-            if(data.success){
-                const keys = data.keys;
-                const arr = Object.entries(keys);
-                
-                document.getElementById('totalKeys').textContent = arr.length;
-                document.getElementById('activeKeys').textContent = arr.filter(([k,v])=>v.status==='active').length;
-                document.getElementById('totalUsed').textContent = arr.reduce((s,[k,v])=>s+(v.used||0),0);
-                document.getElementById('apisCount').textContent = SCOPES_LIST.length;
-                
-                document.getElementById('keysTable').innerHTML = arr.map(([key,val])=>{
-                    const status = val.status === 'active' ? '<span class="badge active">ACTIVE</span>' : '<span class="badge expired">EXPIRED</span>';
-                    return `<tr>
-                        <td><code style="color:#bf00ff;">${key.substring(0,15)}...</code></td>
-                        <td>${val.owner}</td>
-                        <td>${val.limit}</td>
-                        <td>${val.used||0}</td>
-                        <td>${val.expiry||'Never'}</td>
-                        <td>${(val.scopes||[]).join(', ')}</td>
-                        <td>${status}</td>
-                        <td>
-                            <button onclick="deleteKey('${key}')" style="background:red;color:#fff;border:none;padding:4px 8px;border-radius:5px;cursor:pointer">🗑️</button>
-                        </td>
-                    </tr>`;
-                }).join('');
-            }
+        # Generate unique ID
+        record_id = data.get('id') or str(uuid.uuid4())[:8]
+        
+        db = load_db()
+        db[record_id] = {
+            "data": data,
+            "created": datetime.now().isoformat(),
+            "updated": datetime.now().isoformat()
         }
         
-        async function generateKey(){
-            const name = document.getElementById('ownerName').value || 'User';
-            const limit = document.getElementById('limit').value || 100;
-            const expiry = document.getElementById('expiryDays').value || 30;
-            const scopes = Array.from(document.getElementById('scopes').selectedOptions).map(o=>o.value);
-            
-            const res = await fetch('/admin/generate', {
-                method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({owner:name, limit:parseInt(limit), expiryDays:parseInt(expiry), scopes})
-            });
-            
-            const data = await res.json();
-            if(data.success){
-                showToast('✅ Key Generated: ' + data.key);
-                loadData();
-            } else {
-                showToast('❌ Error: ' + data.error);
-            }
-        }
+        save_db(db)
         
-        async function deleteKey(key){
-            if(!confirm('Delete this key?')) return;
-            await fetch('/admin/delete', {
-                method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({key})
-            });
-            showToast('✅ Key Deleted!');
-            loadData();
-        }
+        return jsonify({
+            "status": "✅ Stored",
+            "id": record_id,
+            "total_records": len(db)
+        })
+    except Exception as e:
+        return jsonify({"status": "❌", "error": str(e)}), 400
+
+@app.route('/get/<record_id>', methods=['GET'])
+def get_data(record_id):
+    """Stored data retrieve karo"""
+    db = load_db()
+    
+    if record_id in db:
+        return jsonify({
+            "status": "✅ Found",
+            "data": db[record_id]
+        })
+    
+    return jsonify({"status": "❌ Not Found"}), 404
+
+@app.route('/get/all', methods=['GET'])
+def get_all():
+    """Sab data ek saath"""
+    db = load_db()
+    return jsonify({
+        "status": "✅",
+        "total": len(db),
+        "records": db
+    })
+
+@app.route('/update/<record_id>', methods=['PUT'])
+def update_data(record_id):
+    """Existing data update karo"""
+    try:
+        new_data = request.get_json()
+        db = load_db()
         
-        function showToast(msg){
-            const t = document.getElementById('toast');
-            t.textContent = msg;
-            t.style.display = 'block';
-            setTimeout(()=>t.style.display='none', 3000);
-        }
+        if record_id in db:
+            db[record_id]['data'].update(new_data)
+            db[record_id]['updated'] = datetime.now().isoformat()
+            save_db(db)
+            return jsonify({"status": "✅ Updated"})
         
-        loadData();
-    </script>
-</body>
-</html>
-"""
+        return jsonify({"status": "❌ Not Found"}), 404
+    except Exception as e:
+        return jsonify({"status": "❌", "error": str(e)}), 400
+
+@app.route('/delete/<record_id>', methods=['DELETE'])
+def delete_data(record_id):
+    """Record delete karo"""
+    db = load_db()
+    
+    if record_id in db:
+        del db[record_id]
+        save_db(db)
+        return jsonify({"status": "✅ Deleted", "remaining": len(db)})
+    
+    return jsonify({"status": "❌ Not Found"}), 404
 
 # ============================================
-# API ROUTES
+# KEY MANAGEMENT SPECIFIC API
 # ============================================
+@app.route('/keys/generate', methods=['POST'])
+def generate_key():
+    """API Key generate karo"""
+    try:
+        body = request.get_json() or {}
+        
+        new_key = "BRONX_" + uuid.uuid4().hex[:16].upper()
+        
+        key_data = {
+            "key": new_key,
+            "owner": body.get('owner', 'User'),
+            "limit": body.get('limit', 100),
+            "used": 0,
+            "scopes": body.get('scopes', ['all']),
+            "status": "active",
+            "expiry": (datetime.now() + timedelta(days=body.get('days', 30))).isoformat(),
+            "created": datetime.now().isoformat()
+        }
+        
+        db = load_db()
+        
+        # Keys section me store
+        if 'api_keys' not in db:
+            db['api_keys'] = {}
+        
+        db['api_keys'][new_key] = key_data
+        save_db(db)
+        
+        return jsonify({
+            "status": "✅ Key Generated",
+            "key": new_key,
+            "details": key_data
+        })
+    except Exception as e:
+        return jsonify({"status": "❌", "error": str(e)}), 400
 
-# Public: Verify & Use Key
-@app.route('/api/verify', methods=['GET'])
+@app.route('/keys/verify', methods=['GET'])
 def verify_key():
+    """Key verify karo"""
     api_key = request.args.get('key', '')
-    data = load_data()
     
-    if api_key not in data['keys']:
+    db = load_db()
+    keys = db.get('api_keys', {})
+    
+    if api_key not in keys:
         return jsonify({"valid": False, "error": "Invalid key"}), 403
     
-    key_data = data['keys'][api_key]
+    key_data = keys[api_key]
     
     # Check expiry
     if key_data.get('expiry'):
-        exp = datetime.fromisoformat(key_data['expiry'])
-        if datetime.now() > exp:
-            return jsonify({"valid": False, "error": "Key expired"}), 403
+        if datetime.now() > datetime.fromisoformat(key_data['expiry']):
+            return jsonify({"valid": False, "error": "Expired"}), 403
     
     # Check limit
     if key_data['used'] >= key_data['limit']:
         return jsonify({"valid": False, "error": "Limit exhausted"}), 403
     
-    # Increment usage
-    key_data['used'] = key_data.get('used', 0) + 1
-    save_data(data)
+    # Increment
+    key_data['used'] += 1
+    save_db(db)
     
     return jsonify({
         "valid": True,
         "owner": key_data['owner'],
-        "remaining": key_data['limit'] - key_data['used'],
-        "scopes": key_data.get('scopes', [])
+        "remaining": key_data['limit'] - key_data['used']
+    })
+
+@app.route('/keys/all', methods=['GET'])
+def all_keys():
+    """Sab keys list"""
+    db = load_db()
+    return jsonify({
+        "status": "✅",
+        "total_keys": len(db.get('api_keys', {})),
+        "keys": db.get('api_keys', {})
     })
 
 # ============================================
-# ADMIN ROUTES
+# DATABASE STATS
 # ============================================
-@app.route('/admin')
-def admin_panel():
-    return ADMIN_HTML
+@app.route('/stats', methods=['GET'])
+def db_stats():
+    db = load_db()
+    
+    # File size
+    file_size = os.path.getsize(DATA_FILE) if os.path.exists(DATA_FILE) else 0
+    
+    return jsonify({
+        "status": "✅",
+        "file_path": DATA_FILE,
+        "file_size_kb": round(file_size / 1024, 2),
+        "total_records": len(db),
+        "sections": list(db.keys()),
+        "credit": "@BRONX_ULTRA"
+    })
 
-@app.route('/admin/keys')
-def admin_keys():
-    data = load_data()
-    return jsonify({"success": True, "keys": data['keys']})
+@app.route('/')
+def home():
+    return jsonify({
+        "service": "BRONX ULTRA DATA STORAGE API",
+        "endpoints": {
+            "store": "POST /store",
+            "get": "GET /get/<id>",
+            "get_all": "GET /get/all",
+            "update": "PUT /update/<id>",
+            "delete": "DELETE /delete/<id>",
+            "generate_key": "POST /keys/generate",
+            "verify_key": "GET /keys/verify?key=KEY",
+            "stats": "GET /stats"
+        },
+        "credit": "@BRONX_ULTRA"
+    })
 
-@app.route('/admin/generate', methods=['POST'])
-def admin_generate():
-    try:
-        body = request.get_json()
-        owner = body.get('owner', 'User')
-        limit = body.get('limit', 100)
-        expiry_days = body.get('expiryDays', 30)
-        scopes = body.get('scopes', ['all'])
-        
-        # Generate unique key
-        new_key = "BRONX_" + uuid.uuid4().hex[:12].upper()
-        
-        expiry_date = (datetime.now() + timedelta(days=expiry_days)).isoformat()
-        
-        data = load_data()
-        data['keys'][new_key] = {
-            "owner": owner,
-            "limit": limit,
-            "used": 0,
-            "scopes": scopes,
-            "expiry": expiry_date,
-            "status": "active",
-            "created": datetime.now().isoformat()
-        }
-        
-        save_data(data)
-        
-        return jsonify({
-            "success": True,
-            "key": new_key,
-            "message": "Key generated successfully!"
-        })
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-
-@app.route('/admin/delete', methods=['POST'])
-def admin_delete():
-    try:
-        body = request.get_json()
-        key = body.get('key', '')
-        
-        data = load_data()
-        if key in data['keys']:
-            del data['keys'][key]
-            save_data(data)
-            return jsonify({"success": True})
-        return jsonify({"success": False, "error": "Key not found"})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-
-# ============================================
-# MAIN
-# ============================================
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
