@@ -1,141 +1,200 @@
-from flask import Flask, request, jsonify
-import requests
-import json
-import os
+from flask import Flask, request, jsonify, render_template_string
+from supabase import create_client
 from datetime import datetime
 
 app = Flask(__name__)
 
 # ============================================
-# BOT CONFIG
+# SUPABASE CONFIG
 # ============================================
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '8981073322:AAHmyVlyLjlab1_hOZBllWSKHsJPWMM7smE')
-CHAT_ID = os.environ.get('CHAT_ID', '8721224557')
+SUPABASE_URL = "https://kzedjjswtuveudssyzaa.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6ZWRqanN3dHV2ZXVkc3N5emFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMjM2NTQsImV4cCI6MjA5NDU5OTY1NH0.7iqsEcY6n-hy81CvYqDFnvuIRoLwEZ7oiC6rgfHbzQ0"
 
-def send_tg(text):
-    """Telegram pe message bhejo"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    resp = requests.post(url, json={"chat_id": CHAT_ID, "text": text[:4000]})
-    return resp.json()
-
-def get_tg_messages():
-    """Telegram se sab messages lo"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    resp = requests.get(url)
-    return resp.json()
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ============================================
-# STORAGE API - KISI BHI PROJECT SE CALL KARO
+# SIMPLE HTML UI
 # ============================================
-
-@app.route('/store', methods=['POST'])
-def store():
-    """Koi bhi data store karo"""
-    data = request.get_json()
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BRONX PERMANENT STORAGE</title>
+    <style>
+        body{background:#000;color:#0f0;font-family:monospace;padding:20px}
+        .box{background:#111;border:1px solid #0f0;padding:20px;margin:10px 0;border-radius:10px}
+        input,textarea,select{width:100%;padding:10px;background:#000;border:1px solid #0f0;color:#0f0;margin:5px 0;border-radius:5px}
+        button{background:#0f0;color:#000;padding:12px 30px;border:none;border-radius:5px;font-weight:bold;cursor:pointer}
+        pre{background:#000;padding:10px;border-radius:5px;color:#0f0;max-height:300px;overflow:auto}
+        .card{background:#0a0a0a;border:1px solid #333;padding:15px;margin:5px 0;border-radius:5px}
+    </style>
+</head>
+<body>
+    <h1>🗄️ BRONX PERMANENT STORAGE</h1>
+    <p style="color:#888">Data Save Karo - Kabhi Delete Nahi Hoga!</p>
     
-    # Format for Telegram
-    text = f"📦 BRONX_STORE\n🆔 {data.get('id', 'auto')}\n📝 {json.dumps(data, ensure_ascii=False)[:3500]}"
+    <div class="box">
+        <h3>📦 SAVE DATA</h3>
+        <input type="text" id="keyName" placeholder="Data Name (e.g., my_key)">
+        <textarea id="jsonData" rows="4" placeholder='{"name":"BRONX","plan":"premium"}'></textarea>
+        <button onclick="saveData()">💾 SAVE PERMANENTLY</button>
+    </div>
     
-    result = send_tg(text)
+    <div class="box">
+        <h3>📋 GET ALL DATA</h3>
+        <button onclick="loadData()">🔍 LOAD DATA</button>
+        <pre id="result"></pre>
+    </div>
     
-    if result.get('ok'):
-        return jsonify({
-            "status": "✅ Stored",
-            "message_id": result['result']['message_id'],
-            "storage": "Telegram Cloud - PERMANENT"
-        })
+    <div class="box">
+        <h3>🔍 SEARCH DATA</h3>
+        <input type="text" id="searchKey" placeholder="Search by name...">
+        <button onclick="searchData()">🔎 SEARCH</button>
+        <div id="searchResult"></div>
+    </div>
     
-    return jsonify({"status": "❌", "error": result}), 500
-
-@app.route('/store/keys', methods=['POST'])
-def store_keys():
-    """API Keys store karo"""
-    data = request.get_json()
-    
-    text = f"""🔑 KEY_STORE
-━━━━━━━━━━━━━━━
-Key: {data.get('key','')}
-Owner: {data.get('owner','')}
-Limit: {data.get('limit','')}
-Scopes: {data.get('scopes',[])}
-Expiry: {data.get('expiry','')}
-Time: {datetime.now().isoformat()}
-━━━━━━━━━━━━━━━"""
-    
-    send_tg(text)
-    return jsonify({"status": "✅ Key Stored Permanently"})
-
-@app.route('/store/log', methods=['POST'])
-def store_log():
-    """Activity logs store karo"""
-    data = request.get_json()
-    text = f"📋 LOG | {data.get('action','')} | {data.get('user','')} | {datetime.now().isoformat()}"
-    send_tg(text)
-    return jsonify({"status": "✅ Logged"})
-
-@app.route('/get', methods=['GET'])
-def get_data():
-    """Stored data retrieve karo"""
-    updates = get_tg_messages()
-    
-    if updates.get('ok'):
-        messages = []
-        for msg in updates['result']:
-            if 'message' in msg and 'text' in msg['message']:
-                if 'BRONX_STORE' in msg['message']['text']:
-                    messages.append({
-                        "id": msg['message']['message_id'],
-                        "text": msg['message']['text'],
-                        "date": msg['message']['date']
-                    })
+    <script>
+        async function saveData(){
+            const name = document.getElementById('keyName').value;
+            const data = document.getElementById('jsonData').value;
+            
+            if(!name || !data){
+                alert('Please fill all fields!');
+                return;
+            }
+            
+            try{
+                const jsonData = JSON.parse(data);
+                const resp = await fetch('/save', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({name:name, data:jsonData})
+                });
+                const result = await resp.json();
+                alert('✅ SAVED PERMANENTLY!');
+                loadData();
+            }catch(e){
+                alert('❌ Error: ' + e.message);
+            }
+        }
         
-        return jsonify({
-            "status": "✅",
-            "total": len(messages),
-            "data": messages[-50:]  # Last 50 records
-        })
-    
-    return jsonify({"status": "❌", "error": "Cannot fetch"}), 500
+        async function loadData(){
+            const resp = await fetch('/get');
+            const result = await resp.json();
+            document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+        }
+        
+        async function searchData(){
+            const key = document.getElementById('searchKey').value;
+            const resp = await fetch('/get?search=' + key);
+            const result = await resp.json();
+            
+            let html = '';
+            if(result.data){
+                result.data.forEach(item => {
+                    html += `<div class="card">
+                        <b>${item.name}</b><br>
+                        <pre>${JSON.stringify(item.data, null, 2)}</pre>
+                        <small>${item.created_at}</small>
+                    </div>`;
+                });
+            }
+            document.getElementById('searchResult').innerHTML = html || 'No data found';
+        }
+        
+        loadData();
+    </script>
+</body>
+</html>
+"""
 
-@app.route('/setup', methods=['GET'])
-def setup():
-    """Auto-detect Chat ID"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    resp = requests.get(url)
-    data = resp.json()
-    
-    if data.get('ok') and data['result']:
-        chat_id = data['result'][-1]['message']['chat']['id']
-        return jsonify({
-            "status": "✅",
-            "chat_id": chat_id,
-            "set_env": f"CHAT_ID={chat_id}"
-        })
-    
-    return jsonify({
-        "status": "❌",
-        "help": "Bot ko /start bhejo pehle!"
-    })
+# ============================================
+# API ROUTES
+# ============================================
 
 @app.route('/')
 def home():
-    return jsonify({
-        "service": "🗄️ BRONX EXTERNAL STORAGE API",
-        "storage": "Telegram Cloud (Permanent & Free)",
-        "endpoints": {
-            "store_data": "POST /store",
-            "store_keys": "POST /store/keys",
-            "store_logs": "POST /store/log",
-            "get_data": "GET /get",
-            "auto_setup": "GET /setup"
-        },
-        "how_to_use": {
-            "from_python": "requests.post('URL/store', json={'key':'value'})",
-            "from_js": "fetch('URL/store', {method:'POST', body:JSON.stringify({key:'value'})})"
-        },
-        "credit": "@BRONX_ULTRA"
-    })
+    return HTML
+
+@app.route('/save', methods=['POST'])
+def save():
+    """Data PERMANENTLY save karo"""
+    try:
+        body = request.get_json()
+        name = body.get('name', 'unnamed')
+        data = body.get('data', {})
+        
+        record = {
+            "name": name,
+            "data": data,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table('storage').insert(record).execute()
+        
+        return jsonify({
+            "status": "✅ PERMANENTLY SAVED!",
+            "message": "Data kabhi delete nahi hoga!",
+            "record": result.data
+        })
+    except Exception as e:
+        return jsonify({"status": "❌", "error": str(e)}), 500
+
+@app.route('/get')
+def get_data():
+    """Sab data lo"""
+    try:
+        search = request.args.get('search', '')
+        
+        if search:
+            result = supabase.table('storage').select("*").ilike('name', f'%{search}%').execute()
+        else:
+            result = supabase.table('storage').select("*").order('created_at', desc=True).limit(50).execute()
+        
+        return jsonify({
+            "status": "✅",
+            "count": len(result.data),
+            "data": result.data
+        })
+    except Exception as e:
+        return jsonify({"status": "❌", "error": str(e)}), 500
+
+@app.route('/delete', methods=['POST'])
+def delete():
+    """Data delete karo"""
+    try:
+        body = request.get_json()
+        name = body.get('name', '')
+        
+        result = supabase.table('storage').delete().eq('name', name).execute()
+        
+        return jsonify({
+            "status": "✅ Deleted",
+            "deleted": result.data
+        })
+    except Exception as e:
+        return jsonify({"status": "❌", "error": str(e)}), 500
+
+# ============================================
+# QUICK STORE (KISI BHI PROJECT SE CALL KARO)
+# ============================================
+@app.route('/store', methods=['POST'])
+def quick_store():
+    """Quick store - Sirf data bhejo"""
+    try:
+        data = request.get_json() or {}
+        
+        record = {
+            "name": data.get('name', 'auto_' + datetime.now().strftime('%Y%m%d%H%M%S')),
+            "data": data,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table('storage').insert(record).execute()
+        
+        return jsonify({"status": "✅ Stored", "id": result.data[0]['name'] if result.data else 'unknown'})
+    except Exception as e:
+        return jsonify({"status": "❌", "error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5000)
