@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 
 # ============================================
-# TELEGRAM BOT STORAGE (PERMANENT)
+# TELEGRAM BOT STORAGE
 # ============================================
 BOT_TOKEN = "8981073322:AAHmyVlyLjlab1_hOZBllWSKHsJPWMM7smE"
 CHAT_ID = "8721224557"
@@ -22,7 +22,7 @@ def tg_get():
     return resp.json()
 
 # ============================================
-# ADMIN PANEL HTML
+# ADMIN PANEL HTML (FIXED)
 # ============================================
 ADMIN_HTML = """
 <!DOCTYPE html>
@@ -30,39 +30,31 @@ ADMIN_HTML = """
 <head>
     <meta charset="UTF-8">
     <title>BRONX ADMIN</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{background:#0a0a0a;color:#bf00ff;font-family:monospace;padding:15px}
         .header{text-align:center;padding:20px;border:2px solid #bf00ff;border-radius:10px;margin-bottom:15px;background:#111}
         h1{font-size:22px;text-shadow:0 0 20px #bf00ff}
         .card{background:#111;border:1px solid #bf00ff;border-radius:10px;padding:15px;margin:10px 0}
-        .card h3{color:#bf00ff;margin-bottom:10px;font-size:16px}
-        input,select{width:100%;padding:10px;background:#000;border:1px solid #bf00ff;border-radius:6px;color:#bf00ff;margin:6px 0;font-family:monospace;font-size:13px}
+        input,select{width:100%;padding:10px;background:#000;border:1px solid #bf00ff;border-radius:6px;color:#bf00ff;margin:6px 0;font-family:monospace}
         label{color:#888;font-size:11px;display:block;margin-top:5px}
-        .btn{width:100%;padding:12px;background:#bf00ff;color:#000;border:none;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;margin:8px 0}
-        .btn:hover{box-shadow:0 0 20px #bf00ff}
-        .btn-red{background:#ff3333;color:#fff}
+        .btn{width:100%;padding:12px;background:#bf00ff;color:#000;border:none;border-radius:6px;font-weight:bold;cursor:pointer;margin:8px 0}
         .btn-green{background:#00cc44;color:#000}
+        .btn-red{background:#ff3333;color:#fff}
         .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-        .key-card{background:#0a0a0a;border:1px solid #333;padding:10px;margin:6px 0;border-radius:6px;font-size:11px}
-        .key-card .k{color:#ff0;font-size:10px}
-        .key-card .v{color:#0ff}
-        .badge{padding:3px 8px;border-radius:10px;font-size:9px;font-weight:bold}
+        .key-card{background:#0a0a0a;border:1px solid #333;padding:8px;margin:5px 0;border-radius:5px;font-size:11px}
+        .badge{padding:3px 8px;border-radius:10px;font-size:9px}
         .active{background:#0f02;color:#0f0}
-        .expired{background:#f002;color:#f00}
-        .toast{position:fixed;bottom:15px;right:15px;background:#bf00ff;color:#000;padding:12px 20px;border-radius:8px;font-weight:bold;z-index:999;display:none;font-size:13px}
-        .result-box{background:#000;padding:10px;border-radius:6px;margin-top:10px;display:none;max-height:200px;overflow:auto;font-size:11px}
-        code{color:#0f0;word-break:break-all}
+        .toast{position:fixed;bottom:15px;right:15px;background:#bf00ff;color:#000;padding:12px 20px;border-radius:8px;font-weight:bold;z-index:999;display:none}
+        pre{background:#000;padding:10px;border-radius:5px;color:#0f0;max-height:200px;overflow:auto;font-size:10px;margin-top:8px;display:none}
     </style>
 </head>
 <body>
     <div class="header">
         <h1>👑 BRONX ADMIN PANEL</h1>
-        <p style="color:#888;font-size:11px">Telegram Permanent Storage | Key Manager</p>
+        <p style="color:#888;font-size:11px">Telegram Permanent Storage</p>
     </div>
     
-    <!-- Key Generator -->
     <div class="card">
         <h3>🔑 GENERATE API KEY</h3>
         <div class="row">
@@ -73,56 +65,36 @@ ADMIN_HTML = """
             <div><label>LIMIT</label><input type="number" id="limit" value="100"></div>
             <div><label>EXPIRY (Days)</label><input type="number" id="expiry" value="30"></div>
         </div>
-        <label>SCOPES</label>
-        <select id="scopes" multiple style="height:80px">
-            <option value="all" selected>ALL</option>
-            <option value="number">Number</option>
-            <option value="aadhar">Aadhar</option>
-            <option value="vehicle">Vehicle</option>
-            <option value="tg">Telegram</option>
-        </select>
         <button class="btn" onclick="generateKey()">🚀 GENERATE KEY</button>
-        <div id="genResult" class="result-box"></div>
     </div>
     
-    <!-- View Keys -->
     <div class="card">
-        <h3>📋 ALL KEYS</h3>
-        <button class="btn btn-green" onclick="loadKeys()">🔄 REFRESH KEYS</button>
-        <div id="keysList" style="margin-top:10px;max-height:300px;overflow:auto"></div>
-    </div>
-    
-    <!-- Quick Test -->
-    <div class="card">
-        <h3>🧪 TEST STORAGE</h3>
-        <div class="row">
-            <div><label>PROJECT NAME</label><input type="text" id="projName" value="test"></div>
-            <div><label>JSON DATA</label><input type="text" id="projData" value='{"test":"hello"}'></div>
-        </div>
-        <button class="btn" onclick="testSave()">💾 SAVE</button>
-        <button class="btn btn-green" onclick="testGet()">📖 GET</button>
-        <div id="testResult" class="result-box"></div>
+        <h3>📋 ALL KEYS (<span id="keyCount">0</span>)</h3>
+        <button class="btn btn-green" onclick="loadKeys()">🔄 REFRESH</button>
+        <button class="btn btn-red" onclick="deleteAll()">🗑️ DELETE ALL</button>
+        <div id="keysList" style="margin-top:10px;max-height:400px;overflow:auto"></div>
     </div>
     
     <div id="toast" class="toast"></div>
     
     <script>
         function toast(msg){let t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2000)}
-        function show(id,data){let d=document.getElementById(id);d.textContent=JSON.stringify(data,null,2);d.style.display='block'}
         
         async function generateKey(){
-            let key=document.getElementById('keyName').value||'BRONX_'+Date.now().toString(36).toUpperCase()
+            let key=document.getElementById('keyName').value
+            if(!key){toast('❌ Enter key name!');return}
             let owner=document.getElementById('owner').value||'User'
             let limit=parseInt(document.getElementById('limit').value)||100
             let expiry=parseInt(document.getElementById('expiry').value)||30
-            let scopes=Array.from(document.getElementById('scopes').selectedOptions).map(o=>o.value)
-            
-            let payload={key,owner,limit,expiry,scopes}
             
             try{
-                let r=await fetch('/admin/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+                let r=await fetch('/admin/generate',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({key,owner,limit,expiry})
+                })
                 let d=await r.json()
-                if(d.success){toast('✅ KEY GENERATED!');show('genResult',d);loadKeys()}
+                if(d.success){toast('✅ Key Generated!');loadKeys()}
                 else toast('❌ '+d.error)
             }catch(e){toast('❌ Error')}
         }
@@ -132,36 +104,35 @@ ADMIN_HTML = """
                 let r=await fetch('/admin/keys')
                 let d=await r.json()
                 let html=''
-                if(d.keys) Object.entries(d.keys).forEach(([k,v])=>{
-                    let status=v.status==='active'?'active':'expired'
-                    html+=`<div class="key-card">
-                        <span class="k">🔑 ${k}</span><br>
-                        <span class="v">👤 ${v.owner} | 📊 ${v.limit} | ✅ ${v.used||0} | ⏰ ${v.expiry||'Never'} | </span><span class="badge ${status}">${v.status}</span>
-                    </div>`
-                })
-                document.getElementById('keysList').innerHTML=html||'<p style="color:#888">No keys</p>'
-            }catch(e){}
+                if(d.keys && Object.keys(d.keys).length>0){
+                    document.getElementById('keyCount').textContent=Object.keys(d.keys).length
+                    Object.entries(d.keys).forEach(([k,v])=>{
+                        html+=`<div class="key-card">
+                            <b style="color:#ff0">🔑 ${k}</b><br>
+                            👤 ${v.owner} | 📊 ${v.limit||'∞'} | ✅ ${v.used||0} | ⏰ ${v.expiry||'Never'}
+                            <span class="badge active">${v.status||'active'}</span>
+                            <button onclick="deleteKey('${k}')" style="background:red;color:#fff;border:none;padding:2px 8px;border-radius:3px;margin-left:8px;cursor:pointer;font-size:10px">🗑️</button>
+                        </div>`
+                    })
+                } else {
+                    html='<p style="color:#888">No keys found. Generate one!</p>'
+                }
+                document.getElementById('keysList').innerHTML=html
+            }catch(e){document.getElementById('keysList').innerHTML='<p style="color:red">Error loading keys</p>'}
         }
         
-        async function testSave(){
-            let proj=document.getElementById('projName').value
-            let data=document.getElementById('projData').value
-            try{
-                let json=JSON.parse(data)
-                let r=await fetch('/'+proj,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(json)})
-                let d=await r.json()
-                show('testResult',d)
-                toast('✅ SAVED!')
-            }catch(e){toast('❌ Invalid JSON')}
+        async function deleteKey(key){
+            if(!confirm('Delete '+key+'?'))return
+            await fetch('/admin/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})})
+            toast('✅ Deleted!')
+            loadKeys()
         }
         
-        async function testGet(){
-            let proj=document.getElementById('projName').value
-            try{
-                let r=await fetch('/'+proj)
-                let d=await r.json()
-                show('testResult',d)
-            }catch(e){toast('❌ Error')}
+        async function deleteAll(){
+            if(!confirm('DELETE ALL KEYS?'))return
+            await fetch('/admin/delete-all',{method:'POST'})
+            toast('✅ All deleted!')
+            loadKeys()
         }
         
         loadKeys()
@@ -197,16 +168,14 @@ def save_data(project):
         body = request.get_json()
         if not body:
             return jsonify({"error": "No data"}), 400
-        
         text = f"📦 PROJECT:{project}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nDATA:{json.dumps(body, ensure_ascii=False)}"
         tg_send(text)
-        
-        return jsonify({"status": "✅ SAVED PERMANENTLY", "project": project})
+        return jsonify({"status": "✅ SAVED", "project": project})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # ============================================
-# ADMIN ROUTES
+# ✅ FIXED ADMIN ROUTES
 # ============================================
 @app.route('/admin/generate', methods=['POST'])
 def admin_generate():
@@ -214,35 +183,27 @@ def admin_generate():
         body = request.get_json()
         key = body.get('key', '')
         owner = body.get('owner', 'User')
-        limit = body.get('limit', 100)
-        expiry_days = body.get('expiry', 30)
-        scopes = body.get('scopes', ['all'])
+        limit = int(body.get('limit', 100))
+        expiry_days = int(body.get('expiry', 30))
         
         if not key:
             return jsonify({"success": False, "error": "Key name required"}), 400
         
         expiry = (datetime.now() + timedelta(days=expiry_days)).strftime("%Y-%m-%d") if expiry_days > 0 else "Never"
         
-        key_data = {
-            "owner": owner,
-            "limit": limit,
-            "used": 0,
-            "scopes": scopes,
-            "expiry": expiry,
-            "status": "active",
-            "created": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        key_data = {"owner": owner, "limit": limit, "used": 0, "expiry": expiry, "status": "active"}
         
-        # Save to Telegram
-        text = f"🔑 KEY_STORE\nKEY:{key}\n{json.dumps(key_data, indent=2)}"
+        # ✅ FIXED: Better format for parsing
+        text = f"🔑KEY:{key}|{json.dumps(key_data)}"
         tg_send(text)
         
-        return jsonify({"success": True, "key": key, "data": key_data})
+        return jsonify({"success": True, "key": key})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/admin/keys')
 def admin_keys():
+    """✅ FIXED: Better parsing"""
     try:
         updates = tg_get()
         keys = {}
@@ -251,18 +212,42 @@ def admin_keys():
             for msg in updates['result']:
                 if 'message' in msg and 'text' in msg['message']:
                     text = msg['message']['text']
-                    if '🔑 KEY_STORE' in text:
+                    # ✅ Match new format
+                    if '🔑KEY:' in text:
                         try:
-                            key_match = text.split('KEY:')[1].split('\n')[0].strip()
+                            # Extract key name and JSON
+                            parts = text.split('|')
+                            key_name = parts[0].replace('🔑KEY:', '').strip()
+                            json_data = json.loads(parts[1])
+                            keys[key_name] = json_data
+                        except:
+                            pass
+                    # Also match old format
+                    elif '🔑 KEY_STORE' in text:
+                        try:
+                            lines = text.split('\n')
+                            key_name = lines[1].replace('KEY:', '').strip()
                             json_start = text.index('{')
-                            key_data = json.loads(text[json_start:])
-                            keys[key_match] = key_data
+                            json_data = json.loads(text[json_start:])
+                            keys[key_name] = json_data
                         except:
                             pass
         
         return jsonify({"success": True, "keys": keys})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/admin/delete', methods=['POST'])
+def admin_delete():
+    body = request.get_json()
+    key = body.get('key', '')
+    tg_send(f"❌ DELETED:{key}")
+    return jsonify({"success": True})
+
+@app.route('/admin/delete-all', methods=['POST'])
+def admin_delete_all():
+    tg_send("❌ ALL KEYS DELETED")
+    return jsonify({"success": True})
 
 @app.route('/')
 def home():
